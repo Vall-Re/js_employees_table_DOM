@@ -4,9 +4,35 @@ const table = document.querySelector('table');
 const thead = table.querySelector('thead');
 const tbody = table.querySelector('tbody');
 
-// ===== СОРТУВАННЯ =====
 let sortColumn = null;
-let sortDirection = 'asc';
+let sortDirection = true; // true = ASC, false = DESC
+let activeInput = null;
+
+// ===== СОРТУВАННЯ =====
+function sortTable(index, direction) {
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  rows.sort((a, b) => {
+    const cellA = a.children[index].textContent.trim().replace(/[^\d.]/g, '');
+    const cellB = b.children[index].textContent.trim().replace(/[^\d.]/g, '');
+
+    const isNumber = index === 3 || index === 4;
+    let compare;
+
+    if (isNumber) {
+      compare = Number(cellA) - Number(cellB);
+    } else {
+      compare = a.children[index].textContent
+        .trim()
+        .localeCompare(b.children[index].textContent.trim());
+    }
+
+    return direction ? compare : -compare;
+  });
+
+  tbody.innerHTML = '';
+  rows.forEach((row) => tbody.append(row));
+}
 
 thead.addEventListener('click', (ev) => {
   const th = ev.target.closest('th');
@@ -18,42 +44,22 @@ thead.addEventListener('click', (ev) => {
   const index = Array.from(thead.querySelectorAll('th')).indexOf(th);
 
   if (sortColumn === index) {
-    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    sortDirection = !sortDirection;
   } else {
     sortColumn = index;
-    sortDirection = 'asc';
+    sortDirection = true;
   }
 
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-
-  rows.sort((a, b) => {
-    const aText = a.children[index].textContent.trim();
-    const bText = b.children[index].textContent.trim();
-
-    if (index === 3 || index === 4) {
-      const aNum = parseFloat(aText.replace(/[^\d.]/g, ''));
-      const bNum = parseFloat(bText.replace(/[^\d.]/g, ''));
-
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-    } else {
-      return sortDirection === 'asc'
-        ? aText.localeCompare(bText)
-        : bText.localeCompare(aText);
-    }
-  });
-
-  tbody.innerHTML = '';
-  rows.forEach((r) => tbody.append(r));
+  sortTable(sortColumn, sortDirection);
 });
 
-// ===== ВИДІЛЕННЯ РЯДКА =====
+// ===== ВИДІЛЕННЯ =====
 tbody.addEventListener('click', (ev) => {
   const row = ev.target.closest('tr');
 
   if (!row) {
     return;
   }
-
   tbody.querySelectorAll('tr').forEach((r) => r.classList.remove('active'));
   row.classList.add('active');
 });
@@ -76,49 +82,49 @@ form.innerHTML = `
       <option>San Francisco</option>
     </select>
   </label>
-  <label>Age: <input name="age" type="number" min="18" max="90" step="1" data-qa="age" required></label>
-  <label>Salary: <input name="salary" type="number" min="1" step="1" data-qa="salary" required></label>
+  <label>Age: <input name="age" type="number" data-qa="age" min="18" max="90" step="1" required></label>
+  <label>Salary: <input name="salary" type="number" data-qa="salary" min="1" step="1" required></label>
   <button type="submit">Save to table</button>
 `;
 document.body.append(form);
 
 // ===== НОТИФІКАЦІЯ =====
 function showNotification(title, message, type = 'success') {
-  // прибираємо стару, якщо є
-  document.querySelector('[data-qa="notification"]')?.remove();
-
   const notification = document.createElement('div');
 
-  notification.className = `notification ${type}`;
+  notification.classList.add('notification', type);
   notification.dataset.qa = 'notification';
-
-  notification.innerHTML = `
-    <span class="title">${title}</span>
-    <p>${message}</p>
-  `;
+  notification.innerHTML = `<span class="title">${title}</span><p>${message}</p>`;
   document.body.append(notification);
   setTimeout(() => notification.remove(), 3000);
 }
 
-// ===== ФОРМАТ ЗАРПЛАТИ =====
+// ===== ФОРМАТУВАННЯ ЗАРПЛАТИ =====
 function formatSalary(value) {
-  return `$${Number(value).toLocaleString('en-US')}`;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
-// ===== ОБРОБКА ФОРМИ =====
+// ===== SUBMIT =====
 form.addEventListener('submit', (ev) => {
   ev.preventDefault();
 
   const formData = new FormData(form);
   const data = Object.fromEntries(formData.entries());
 
-  const nameEmpl = data.name.trim();
+  const nameEmp = data.name.trim();
   const position = data.position.trim();
   const office = data.office;
   const age = Number(data.age);
   const salary = Number(data.salary);
 
-  if (nameEmpl.length < 4) {
+  // NAME VALIDATION
+  const nameLetters = nameEmp.match(/[A-Za-z]/g) || [];
+
+  if (nameLetters.length < 4) {
     showNotification(
       'Error',
       'The name must contain at least 4 letters',
@@ -128,7 +134,10 @@ form.addEventListener('submit', (ev) => {
     return;
   }
 
-  if (position.trim().length < 2) {
+  // POSITION VALIDATION
+  const positionLetters = position.match(/[A-Za-z]/g) || [];
+
+  if (positionLetters.length < 2) {
     showNotification(
       'Error',
       'The position must contain at least 2 letters',
@@ -138,50 +147,54 @@ form.addEventListener('submit', (ev) => {
     return;
   }
 
-  if (!age || isNaN(age) || age < 18 || age > 90) {
-    showNotification('Error', 'Age must be between 18 and 90 years', 'error');
+  // AGE VALIDATION
+  if (Number.isNaN(age) || age < 18 || age > 90) {
+    showNotification(
+      'Error',
+      'Age must be between 18 and 90 years old',
+      'error',
+    );
 
     return;
   }
 
-  if (!salary || isNaN(salary) || salary <= 0) {
-    showNotification('Error', 'Salary must be greater than 0', 'error');
+  // SALARY VALIDATION
+  if (Number.isNaN(salary) || salary <= 0) {
+    showNotification('Error', 'Salary must be a positive number', 'error');
 
     return;
   }
 
+  // ADD ROW
   const newRow = document.createElement('tr');
 
   newRow.innerHTML = `
-    <td>${nameEmpl}</td>
+    <td>${nameEmp}</td>
     <td>${position}</td>
     <td>${office}</td>
     <td>${age}</td>
     <td>${formatSalary(salary)}</td>
   `;
-
   tbody.append(newRow);
   form.reset();
-  showNotification('Success', 'Employee added successfully', 'success');
 
-  // якщо зараз є активне сортування — пересортуй
+  showNotification('Success', 'Employee added to table', 'success');
+
+  // Ресортуємо без зміни напрямку
   if (sortColumn !== null) {
-    const e = new Event('click');
-
-    thead.querySelectorAll('th')[sortColumn].dispatchEvent(e);
+    sortTable(sortColumn, sortDirection);
   }
 });
 
-// ===== РЕДАГУВАННЯ КЛІТИНКИ =====
-let activeInput = null;
-
+// ===== РЕДАГУВАННЯ КЛІТИН =====
 tbody.addEventListener('dblclick', (ev) => {
   const cell = ev.target.closest('td');
 
-  if (!cell || cell.querySelector('input')) {
+  if (!cell) {
     return;
   }
 
+  // Закриваємо попередній інпут
   if (activeInput) {
     activeInput.blur();
   }
@@ -190,7 +203,8 @@ tbody.addEventListener('dblclick', (ev) => {
   const input = document.createElement('input');
 
   input.className = 'cell-input';
-  input.value = oldValue.replace(/\$/g, '').replace(/,/g, '');
+  input.value = oldValue;
+
   cell.textContent = '';
   cell.append(input);
   input.focus();
@@ -198,26 +212,30 @@ tbody.addEventListener('dblclick', (ev) => {
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-      saveCell();
+      saveCellValue();
     }
   });
 
-  input.addEventListener('blur', saveCell);
+  input.addEventListener('blur', saveCellValue);
 
-  function saveCell() {
+  function saveCellValue() {
     let newValue = input.value.trim();
 
     if (!newValue) {
       newValue = oldValue;
     }
 
-    const index = cell.cellIndex;
+    const colIndex = cell.cellIndex;
 
-    if (index === 4) {
-      newValue = formatSalary(Number(newValue));
+    if (colIndex === 4) {
+      // Salary column
+      const num = Number(newValue.replace(/[^\d.]/g, ''));
+
+      cell.textContent = formatSalary(num);
+    } else {
+      cell.textContent = newValue;
     }
 
-    cell.textContent = newValue;
     activeInput = null;
   }
 });
